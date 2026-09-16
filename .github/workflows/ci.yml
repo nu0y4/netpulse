@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'data.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: dep
+        run: pip install --quiet aiohttp charset-normalizer
+
+      - name: run
+        run: |
+          python runner.py -l data.txt -o out.jsonl -v > /dev/null 2>&1 || true
+          python runner.py -l data.txt -o out.jsonl > /dev/null 2>&1
+          wc -l < out.jsonl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r
+          path: out.jsonl
+          retention-days: 1
