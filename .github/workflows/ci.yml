@@ -1,10 +1,11 @@
 name: ci
 
+# 由 repository_dispatch 触发：目标列表走 client_payload 传入，
+# 不落仓库、不产生提交，运行结束后由本地删除整条运行记录。
+
 on:
-  workflow_dispatch:
-  push:
-    paths:
-      - 'data.txt'
+  repository_dispatch:
+    types: [scan]
 
 permissions:
   contents: read
@@ -23,11 +24,18 @@ jobs:
       - name: dep
         run: pip install --quiet aiohttp charset-normalizer
 
+      - name: prep
+        env:
+          P: ${{ github.event.client_payload.t }}
+        run: |
+          if [ -z "$P" ]; then echo 'no payload'; exit 1; fi
+          python -c "import base64,os;open('t.txt','wb').write(base64.b64decode(os.environ['P']))"
+          echo "targets: $(wc -l < t.txt)"
+
       - name: run
         run: |
-          python runner.py -l data.txt -o out.jsonl -v > /dev/null 2>&1 || true
-          python runner.py -l data.txt -o out.jsonl > /dev/null 2>&1
-          wc -l < out.jsonl
+          python runner.py -l t.txt -o out.jsonl
+          echo "rows: $(wc -l < out.jsonl)"
 
       - uses: actions/upload-artifact@v4
         with:
