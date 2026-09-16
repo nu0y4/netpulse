@@ -1,0 +1,59 @@
+name: shot
+
+# 由 repository_dispatch 触发：目标列表走 client_payload，
+# 云端先探活，再把存活页面用 Playwright 截图，打包成 zip 供本地取回。
+on:
+  repository_dispatch:
+    types: [shot]
+
+permissions:
+  contents: read
+
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: dep
+        run: |
+          pip install --quiet aiohttp charset-normalizer playwright
+          python -m playwright install --with-deps chromium
+
+      - name: prep
+        env:
+          P: ${{ github.event.client_payload.t }}
+          O: ${{ github.event.client_payload.o }}
+        run: |
+          if [ -z "$P" ]; then echo 'no payload'; exit 1; fi
+          python -c "import base64,os;open('t.txt','wb').write(base64.b64decode(os.environ['P']));open('opt.json','w',encoding='utf-8').write(os.environ.get('O') or '{}')"
+          echo "targets: $(wc -l < t.txt)"
+          cat opt.json
+
+      - name: probe
+        run: |
+          python runner.py -l t.txt -o out.jsonl
+          echo "probed: $(wc -l < out.jsonl)"
+
+      - name: shoot
+        run: python shooter.py -i out.jsonl -d shots -o shots.json --opt opt.json
+
+      - name: gallery
+        run: python gallery.py -i shots.json -o gallery.html
+
+      - name: pack
+        run: |
+          zip -qr result.zip shots gallery.html shots.json out.jsonl 2>/dev/null || zip -qr result.zip gallery.html shots.json out.jsonl
+          ls -lh result.zip
+          echo "shots: $(ls shots 2>/dev/null | wc -l)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r
+          path: result.zip
+          retention-days: 1
